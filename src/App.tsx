@@ -10,7 +10,19 @@ import {
 // TIPOS DE DATOS
 // ==========================================
 type PaymentMethod = 'Efectivo' | 'Digital';
-type ExpenseType = 'super_sobrante' | 'pasajes_oficina' | 'fuga_finde' | 'fuga_tienda_app' | 'tanda_terceros';
+type ExpenseType =
+  | 'andrea_4000'
+  | 'super_sobrante'
+  | 'pasajes_oficina'
+  | 'fuga_finde'
+  | 'fuga_tienda_app'
+  | 'tanda_terceros';
+
+type AndreaSubcategory =
+  | 'Comida Diaria / Mandado'
+  | 'Antojo / Tienda / Café'
+  | 'Gastos Personales'
+  | 'Hogar / Otros';
 
 interface QuincenaChecklistItem {
   id: string;
@@ -26,6 +38,7 @@ interface Movement {
   description: string;
   amount: number;
   type: ExpenseType;
+  andreaSubcat?: AndreaSubcategory;
   method: PaymentMethod;
   date: string;
   bank: 'Nu' | 'Banamex' | 'Efectivo';
@@ -65,6 +78,7 @@ interface AppState {
   cashDigital: number;          // $820 digital hoy
   quincenaApplied: boolean;
   lastQuincenaAmount: number;   // Monto real ingresado en el modal
+  andreaBudgetLimit: number;    // $4,000 fijos quincenales de Andrea
   luzBillTotal: number;         // $3,000 vence 23 de octubre
   luzAbonoReceived: number;     // $1,500 recibidos
   luzAbonoTaken: number;        // $600 tomados del abono
@@ -85,13 +99,14 @@ const INITIAL_STATE: AppState = {
   cashDigital: 820,
   quincenaApplied: false,
   lastQuincenaAmount: 15600,
+  andreaBudgetLimit: 4000,
   luzBillTotal: 3000,
   luzAbonoReceived: 1500,
   luzAbonoTaken: 600,
   luzEnvelopeSaved: 900,
   domiciliacionReminderActive: true,
   checklist: [
-    { id: 'c1', name: 'Comida diaria y gastos de Andrea (De ley)', amount: 4000, paid: false, category: 'hogar', note: 'Exclusivo comida diaria y gastos personales de Andy' },
+    { id: 'c1', name: 'Comida diaria y gastos de Andrea (De ley)', amount: 4000, paid: false, category: 'hogar', note: 'Habilita la bolsa de $4,000 de Andrea en Pestaña 3' },
     { id: 'c2', name: 'Ahorro Fijo Quincenal (Cascada a Boda/Metas)', amount: 2400, paid: false, category: 'ahorro', note: 'Al marcar este check se suma en vivo a la Pestaña 2 (Boda)' },
     { id: 'c3', name: 'Completar Recibo Luz CFE (Vence 23 Oct)', amount: 2100, paid: false, category: 'servicios', note: '$1,500 de tu mitad + $600 tomados del abono (Bimestral, tocó este mes)' },
     { id: 'c4', name: 'Ortodoncia Valentina', amount: 1300, paid: false, category: 'salud_mascotas', note: 'Pago fijo quincenal de tratamiento' },
@@ -143,7 +158,7 @@ const INITIAL_STATE: AppState = {
   ],
 };
 
-const STORAGE_KEY = 'finanzas_alejandro_andy_master_v10';
+const STORAGE_KEY = 'finanzas_alejandro_andy_master_v11';
 const SERVER_URL_KEY = 'finanzas_laptop_server_url';
 
 export default function App() {
@@ -162,13 +177,15 @@ export default function App() {
   const [debtStrategy, setDebtStrategy] = useState<'avalanche' | 'snowball'>('avalanche');
   const [extraDebtBudget, setExtraDebtBudget] = useState<number>(1000);
 
-  // Formulario de gastos diarios (Súper, Pasajes, Fines de semana)
+  // Formulario de gastos diarios (Incluye opción para Andrea $4,000)
   const [movDesc, setMovDesc] = useState('');
   const [movAmount, setMovAmount] = useState('');
-  const [movType, setMovType] = useState<ExpenseType>('super_sobrante');
-  const [movMethod, setMovMethod] = useState<PaymentMethod>('Efectivo');
+  const [movType, setMovType] = useState<ExpenseType>('andrea_4000');
+  const [andreaSubcat, setAndreaSubcat] = useState<AndreaSubcategory>('Comida Diaria / Mandado');
+  const [movMethod, setMovMethod] = useState<PaymentMethod>('Digital');
+  const [historyFilter, setHistoryFilter] = useState<'todos' | 'andrea' | 'alejandro'>('todos');
 
-  // Formulario de entradas de dinero extra (Desarrollo, Tandas, Aguinaldo)
+  // Formulario de entradas de dinero extra
   const [extraSource, setExtraSource] = useState('');
   const [extraAmount, setExtraAmount] = useState('');
 
@@ -180,17 +197,14 @@ export default function App() {
   const [lastSyncTime, setLastSyncTime] = useState<string>('Sin sincronizar aún');
   const [monthlyJsonInput, setMonthlyJsonInput] = useState<string>('');
 
-  // Guardar estado local siempre
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
   }, [state]);
 
-  // Guardar la URL de Cloudflare para no perderla al recargar
   useEffect(() => {
     localStorage.setItem(SERVER_URL_KEY, serverUrl);
   }, [serverUrl]);
 
-  // Función de sincronización con la Laptop
   const syncWithLaptop = async (mode: 'push' | 'pull', silent = false) => {
     const cleanUrl = serverUrl.trim().replace(/\/$/, '');
     if (!cleanUrl.startsWith('http')) return;
@@ -217,7 +231,6 @@ export default function App() {
     }
   };
 
-  // AUTO-GUARDADO EN LA LAPTOP CADA 45 SEGUNDOS Y AL CAMBIAR CHECKS (SI EXISTE URL)
   useEffect(() => {
     const cleanUrl = serverUrl.trim();
     if (!cleanUrl.startsWith('http')) return;
@@ -269,7 +282,7 @@ export default function App() {
   };
 
   // ==========================================
-  // MÉTRICAS Y GRÁFICOS CENTRALES
+  // MÉTRICAS Y GRÁFICOS CENTRALES (INCLUYE DESGLOSE DE LOS $4,000 DE ANDREA)
   // ==========================================
   const metrics = useMemo(() => {
     const totalCashNow = state.cashPhysical + state.cashDigital;
@@ -280,15 +293,31 @@ export default function App() {
     const totalExtras = state.extraIncomes.reduce((acc, item) => acc + item.amount, 0);
     const totalSavedInGoals = state.goals.reduce((acc, g) => acc + g.saved, 0);
 
-    // Gastos por tipo para gráficos
+    // Gastos exclusivos de los $4,000 de Andrea
+    const andreaMovements = state.movements.filter((m) => m.type === 'andrea_4000');
+    const andreaSpent = andreaMovements.reduce((a, b) => a + b.amount, 0);
+    const andreaRemaining = Math.max(0, state.andreaBudgetLimit - andreaSpent);
+
+    const andreaComida = andreaMovements
+      .filter((m) => (m.andreaSubcat || 'Comida Diaria / Mandado') === 'Comida Diaria / Mandado')
+      .reduce((a, b) => a + b.amount, 0);
+    const andreaAntojos = andreaMovements
+      .filter((m) => m.andreaSubcat === 'Antojo / Tienda / Café')
+      .reduce((a, b) => a + b.amount, 0);
+    const andreaPersonales = andreaMovements
+      .filter((m) => m.andreaSubcat === 'Gastos Personales')
+      .reduce((a, b) => a + b.amount, 0);
+    const andreaHogar = andreaMovements
+      .filter((m) => m.andreaSubcat === 'Hogar / Otros')
+      .reduce((a, b) => a + b.amount, 0);
+
+    // Gastos de Alejandro y generales
     const superSpent = state.movements.filter((m) => m.type === 'super_sobrante').reduce((a, b) => a + b.amount, 0);
     const pasajesSpent = state.movements.filter((m) => m.type === 'pasajes_oficina').reduce((a, b) => a + b.amount, 0);
     const fugasFinde = state.movements.filter((m) => m.type === 'fuga_finde').reduce((a, b) => a + b.amount, 0);
     const fugasTienda = state.movements.filter((m) => m.type === 'fuga_tienda_app').reduce((a, b) => a + b.amount, 0);
-    const tandasSpent = state.movements.filter((m) => m.type === 'tanda_terceros').reduce((a, b) => a + b.amount, 0);
     const totalFugas = fugasFinde + fugasTienda;
 
-    // Sobrante real para que tú hagas el Súper
     const basePool = state.quincenaApplied
       ? 1300 + 820 + state.lastQuincenaAmount + totalExtras
       : 1300 + 820 + totalExtras;
@@ -296,10 +325,15 @@ export default function App() {
       ? basePool - 900 - totalChecklist - superSpent
       : totalCashNow - state.luzEnvelopeSaved;
 
-    // Costo de oportunidad de las fugas a 3 años en Cajita Nu (13% anual)
     const r = 0.13 / 12;
     const n = 36;
     const fugas3YearsNu = totalFugas * ((Math.pow(1 + r, n) - 1) / r);
+
+    const filteredMovements = state.movements.filter((m) => {
+      if (historyFilter === 'andrea') return m.type === 'andrea_4000';
+      if (historyFilter === 'alejandro') return m.type !== 'andrea_4000';
+      return true;
+    });
 
     return {
       totalCashNow,
@@ -308,17 +342,23 @@ export default function App() {
       pendingChecklist,
       totalExtras,
       totalSavedInGoals,
+      andreaSpent,
+      andreaRemaining,
+      andreaComida,
+      andreaAntojos,
+      andreaPersonales,
+      andreaHogar,
       superSpent,
       pasajesSpent,
       fugasFinde,
       fugasTienda,
-      tandasSpent,
       totalFugas,
       sobranteParaTuSuper,
       fugas3YearsNu,
       basePool,
+      filteredMovements,
     };
-  }, [state]);
+  }, [state, historyFilter]);
 
   const orderedDebts = useMemo(() => {
     return [...state.debts].sort((a, b) =>
@@ -339,7 +379,7 @@ export default function App() {
       quincenaApplied: true,
       lastQuincenaAmount: amount,
       cashDigital: prev.cashDigital + amount,
-      luzEnvelopeSaved: 3000, // Con la quincena queda cubierto el recibo de $3,000 del 23 de oct
+      luzEnvelopeSaved: 3000,
     }));
     setShowQuincenaModal(false);
   };
@@ -352,13 +392,11 @@ export default function App() {
       const willBePaid = !targetItem.paid;
       const delta = willBePaid ? targetItem.amount : -targetItem.amount;
 
-      // Si es el check de Ahorro Fijo Quincenal ($2,400), lo envía en cascada a la Boda y demás metas
       const updatedGoals =
         targetItem.category === 'ahorro'
           ? applyCascadeToGoals(delta, prev.goals)
           : prev.goals;
 
-      // Si es el check de la Luz ($2,100), actualiza el sobre de la luz a $3,000
       const updatedLuz =
         targetItem.id === 'c3'
           ? willBePaid
@@ -384,14 +422,22 @@ export default function App() {
 
     setState((prev) => ({
       ...prev,
-      cashPhysical: movMethod === 'Efectivo' ? Math.max(0, prev.cashPhysical - val) : prev.cashPhysical,
-      cashDigital: movMethod === 'Digital' ? Math.max(0, prev.cashDigital - val) : prev.cashDigital,
+      // Si es un gasto de los $4,000 de Andrea, se descuenta de su bolsa de $4,000 sin alterar tu sobrante de efectivo
+      cashPhysical:
+        movType !== 'andrea_4000' && movMethod === 'Efectivo'
+          ? Math.max(0, prev.cashPhysical - val)
+          : prev.cashPhysical,
+      cashDigital:
+        movType !== 'andrea_4000' && movMethod === 'Digital'
+          ? Math.max(0, prev.cashDigital - val)
+          : prev.cashDigital,
       movements: [
         {
           id: Date.now().toString(),
           description: movDesc.trim(),
           amount: val,
           type: movType,
+          andreaSubcat: movType === 'andrea_4000' ? andreaSubcat : undefined,
           method: movMethod,
           date: new Date().toISOString().slice(0, 10),
           bank: movMethod === 'Efectivo' ? 'Efectivo' : 'Nu',
@@ -420,7 +466,6 @@ export default function App() {
         },
         ...prev.extraIncomes,
       ],
-      // Efecto Cascada: llena primero Boda ($10,000) y si ya se llenó, pasa a Fondo de Emergencia, Casa y Carro
       goals: applyCascadeToGoals(val, prev.goals),
     }));
     setExtraSource('');
@@ -443,6 +488,7 @@ export default function App() {
     new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN', maximumFractionDigits: 0 }).format(val);
 
   const ahorroCheckItem = state.checklist.find((i) => i.category === 'ahorro');
+  const andreaProgressPct = Math.min(100, (metrics.andreaSpent / state.andreaBudgetLimit) * 100);
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 pb-24 md:pb-10 font-sans">
@@ -548,7 +594,7 @@ export default function App() {
             >
               <DollarSign className="w-4 h-4" />
               {state.quincenaApplied
-                ? `Quincena: ${formatMXN(state.lastQuincenaAmount)} (Editar / Sumar otra)`
+                ? `Quincena: ${formatMXN(state.lastQuincenaAmount)} (Editar)`
                 : 'Registrar Quincena (Abrir Modal)'}
             </button>
 
@@ -570,7 +616,7 @@ export default function App() {
           {[
             { id: 'quincena', label: '1. Mi Quincena, Luz 23 Oct y Checklist Fijos', icon: CheckSquare },
             { id: 'metas_boda', label: '2. Boda 14 Nov ($10,000), Cascada de Metas y Extras', icon: Heart },
-            { id: 'gastos_graficos', label: '3. Gráficos de Todo, Súper y Fugas', icon: PieChart },
+            { id: 'gastos_graficos', label: '3. Bolsa $4,000 Andrea, Gráficos, Súper y Fugas', icon: PieChart },
             { id: 'deudas_alertas', label: '4. Deudas, Quitas y Alertas Domiciliación', icon: ShieldAlert },
             { id: 'servidor_pdf', label: '5. Auto-Sync Laptop & Corte Mensual por PDF', icon: Server },
           ].map((tab) => {
@@ -612,6 +658,19 @@ export default function App() {
                 <Banknote className="w-8 h-8 text-emerald-500/30" />
               </div>
 
+              <div className="bg-pink-950/30 border border-pink-500/40 rounded-2xl p-4">
+                <div className="flex justify-between">
+                  <span className="text-xs text-pink-300 uppercase">Bolsa $4,000 de Andrea</span>
+                  <Heart className="w-4 h-4 text-pink-400" />
+                </div>
+                <p className="text-2xl font-bold text-pink-400 mt-1">
+                  {formatMXN(metrics.andreaRemaining)} libres
+                </p>
+                <p className="text-xs text-pink-200/80 mt-1">
+                  Gastado por Andy: {formatMXN(metrics.andreaSpent)} de $4,000
+                </p>
+              </div>
+
               <div className="bg-amber-950/30 border border-amber-500/40 rounded-2xl p-4">
                 <div className="flex justify-between">
                   <span className="text-xs text-amber-300 uppercase">Sobre Luz CFE (23 Oct)</span>
@@ -625,19 +684,11 @@ export default function App() {
                 </p>
               </div>
 
-              <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4">
-                <span className="text-xs text-slate-400 uppercase">Compromisos Fijos Quincena</span>
-                <p className="text-2xl font-bold text-sky-400 mt-1">{formatMXN(metrics.totalChecklist)}</p>
-                <p className="text-xs text-slate-400 mt-1">
-                  Cubiertos: {formatMXN(metrics.paidChecklist)} | Faltan: {formatMXN(metrics.pendingChecklist)}
-                </p>
-              </div>
-
               <div className="bg-emerald-950/30 border border-emerald-500/40 rounded-2xl p-4">
                 <span className="text-xs text-emerald-300 uppercase">Sobrante para Tu Súper</span>
                 <p className="text-2xl font-bold text-emerald-400 mt-1">{formatMXN(metrics.sobranteParaTuSuper)}</p>
                 <p className="text-xs text-emerald-200/80 mt-1">
-                  Hogar propio (sin renta) • Libre para despensa
+                  Libre después de cubrir todos los fijos
                 </p>
               </div>
             </div>
@@ -657,7 +708,7 @@ export default function App() {
               <div className="w-full h-5 bg-slate-800 rounded-full overflow-hidden flex">
                 <div
                   style={{ width: `${Math.min(100, (4000 / Math.max(1, metrics.basePool)) * 100)}%` }}
-                  className="bg-sky-500"
+                  className="bg-pink-500"
                   title="Andrea Comida Diaria ($4,000)"
                 />
                 <div
@@ -671,7 +722,7 @@ export default function App() {
                   title="Ahorro Fijo a Boda/Metas ($2,400)"
                 />
                 <div
-                  style={{ width: `${Math.min(100, (6595 / Math.max(1, metrics.basePool)) * 100)}%` }}
+                  style={{ width: `${Math.min(100, (6495 / Math.max(1, metrics.basePool)) * 100)}%` }}
                   className="bg-indigo-500"
                   title="Valentina ($1,300), Telcel ($2,000), Pasajes ($1,000), Gasolina ($720), Perros ($640), Totalplay ($710)"
                 />
@@ -683,7 +734,7 @@ export default function App() {
               </div>
 
               <div className="flex flex-wrap gap-4 text-xs text-slate-300 pt-1">
-                <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-full bg-sky-500" /> Andrea ($4,000)</span>
+                <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-full bg-pink-500" /> Andrea ($4,000)</span>
                 <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-full bg-amber-500" /> Luz 23 Oct ($3,000)</span>
                 <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-full bg-purple-500" /> Ahorro Boda/Metas ($2,400)</span>
                 <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-full bg-indigo-500" /> Valentina, Telcel, Pasajes, Gasolina, Perros, Internet ($6,495)</span>
@@ -848,24 +899,84 @@ export default function App() {
         )}
 
         {/* ==========================================
-            PESTAÑA 3: GRÁFICOS DE TODO, SÚPER Y DETECTOR DE FUGAS
+            PESTAÑA 3: BOLSA $4,000 DE ANDREA + GRÁFICOS DE TODO + BITÁCORA
         ========================================== */}
         {activeTab === 'gastos_graficos' && (
           <div className="space-y-6">
-            {/* GRÁFICO DE BARRAS HORIZONTALES POR CATEGORÍA Y COSTO DE OPORTUNIDAD */}
+            {/* BLOQUE EXCLUSIVO PARA ANDREA: RASTREADOR DE SUS $4,000 QUINCENALES */}
+            <div className="bg-pink-950/20 border border-pink-500/40 rounded-2xl p-5 space-y-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <span className="text-xs uppercase tracking-wider text-pink-300 font-bold flex items-center gap-1.5">
+                    <Heart className="w-4 h-4 text-pink-400" />
+                    Control Exclusivo de Andrea: ¿En qué se van los $4,000 de la quincena?
+                  </span>
+                  <p className="text-xs text-slate-300 mt-0.5">
+                    Cada vez que Andrea registre una compra de comida diaria o gasto personal, aquí verá cuánto lleva gastado y cuánto le queda disponible.
+                  </p>
+                </div>
+                <div className="text-right">
+                  <span className="text-xs text-pink-200">Disponible de sus $4,000:</span>
+                  <p className="text-2xl font-bold text-pink-400">
+                    {formatMXN(metrics.andreaRemaining)}{' '}
+                    <span className="text-xs text-slate-400 font-normal">
+                      (Gastado: {formatMXN(metrics.andreaSpent)})
+                    </span>
+                  </p>
+                </div>
+              </div>
+
+              {/* Barra general de los $4,000 de Andrea */}
+              <div className="w-full h-3.5 bg-slate-900 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-pink-500 transition-all"
+                  style={{ width: `${andreaProgressPct}%` }}
+                />
+              </div>
+
+              {/* 4 Subcategorías de los $4,000 de Andrea */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+                <div className="p-3 rounded-xl bg-slate-900/80 border border-slate-800">
+                  <span className="text-slate-400">Comida Diaria / Mandado</span>
+                  <p className="text-base font-bold text-pink-300 mt-1">{formatMXN(metrics.andreaComida)}</p>
+                </div>
+                <div className="p-3 rounded-xl bg-slate-900/80 border border-slate-800">
+                  <span className="text-slate-400">Antojo / Tienda / Café</span>
+                  <p className="text-base font-bold text-amber-300 mt-1">{formatMXN(metrics.andreaAntojos)}</p>
+                </div>
+                <div className="p-3 rounded-xl bg-slate-900/80 border border-slate-800">
+                  <span className="text-slate-400">Gastos Personales</span>
+                  <p className="text-base font-bold text-purple-300 mt-1">{formatMXN(metrics.andreaPersonales)}</p>
+                </div>
+                <div className="p-3 rounded-xl bg-slate-900/80 border border-slate-800">
+                  <span className="text-slate-400">Hogar / Otros</span>
+                  <p className="text-base font-bold text-sky-300 mt-1">{formatMXN(metrics.andreaHogar)}</p>
+                </div>
+              </div>
+            </div>
+
+            {/* GRÁFICO DE BARRAS GENERAL Y COSTO DE OPORTUNIDAD DE FUGAS */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 space-y-4">
                 <h3 className="font-semibold text-sm flex items-center gap-2">
                   <PieChart className="w-4 h-4 text-sky-400" />
-                  Gráfico de Gastos Variables y Fugas Registradas
+                  Gráfico General de Gastos Variables y Fugas
                 </h3>
                 {[
+                  { label: 'Gastos de Andrea (De su bolsa de $4,000)', val: metrics.andreaSpent, color: 'bg-pink-500' },
                   { label: 'Fugas Fin de Semana (Comidas/Salidas)', val: metrics.fugasFinde, color: 'bg-rose-500' },
                   { label: 'Fugas Tiendas, Apps y Micro-Recargas', val: metrics.fugasTienda, color: 'bg-amber-500' },
                   { label: 'Súper y Despensa Hogar (Con tu sobrante)', val: metrics.superSpent, color: 'bg-emerald-500' },
                   { label: 'Pasajes y Comedor Trabajo', val: metrics.pasajesSpent, color: 'bg-sky-500' },
                 ].map((bar) => {
-                  const maxVal = Math.max(2000, metrics.fugasFinde, metrics.fugasTienda, metrics.superSpent, metrics.pasajesSpent);
+                  const maxVal = Math.max(
+                    4000,
+                    metrics.andreaSpent,
+                    metrics.fugasFinde,
+                    metrics.fugasTienda,
+                    metrics.superSpent,
+                    metrics.pasajesSpent
+                  );
                   const widthPct = Math.min(100, (bar.val / maxVal) * 100);
                   return (
                     <div key={bar.label} className="space-y-1 text-xs">
@@ -897,67 +1008,146 @@ export default function App() {
               </div>
             </div>
 
-            {/* REGISTRO Y BITÁCORA */}
+            {/* FORMULARIO DE REGISTRO Y BITÁCORA CON FILTRO ANDREA / ALEJANDRO */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
               <form onSubmit={handleAddMovement} className="bg-slate-900 border border-slate-800 rounded-2xl p-5 space-y-4 h-fit">
                 <h3 className="font-semibold text-sm flex items-center gap-2">
-                  <Plus className="w-4 h-4 text-emerald-400" /> Registrar Gasto Diario
+                  <Plus className="w-4 h-4 text-emerald-400" /> Registrar Gasto (Andrea o Alejandro)
                 </h3>
+
+                <div>
+                  <label className="text-xs text-slate-400 block mb-1">¿De qué bolsa sale este gasto?</label>
+                  <select
+                    value={movType}
+                    onChange={(e) => setMovType(e.target.value as ExpenseType)}
+                    className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-xs font-semibold text-white"
+                  >
+                    <option value="andrea_4000">💖 Bolsa $4,000 de Andrea (Comida diaria / Sus gastos)</option>
+                    <option value="super_sobrante">🛒 Súper Hogar (Con sobrante de Alejandro)</option>
+                    <option value="pasajes_oficina">🚌 Pasajes y Comedor Oficina (Alejandro)</option>
+                    <option value="fuga_finde">🍕 Fuga Fin de Semana (Restaurantes / Salidas)</option>
+                    <option value="fuga_tienda_app">📱 Fuga Tienda / App / Recarga</option>
+                  </select>
+                </div>
+
+                {movType === 'andrea_4000' && (
+                  <div>
+                    <label className="text-xs text-pink-300 block mb-1">Subcategoría del gasto de Andrea:</label>
+                    <select
+                      value={andreaSubcat}
+                      onChange={(e) => setAndreaSubcat(e.target.value as AndreaSubcategory)}
+                      className="w-full bg-pink-950/30 border border-pink-500/40 rounded-xl px-3 py-2 text-xs text-pink-200"
+                    >
+                      <option value="Comida Diaria / Mandado">Comida Diaria / Mandado</option>
+                      <option value="Antojo / Tienda / Café">Antojo / Tienda / Café</option>
+                      <option value="Gastos Personales">Gastos Personales</option>
+                      <option value="Hogar / Otros">Hogar / Otros</option>
+                    </select>
+                  </div>
+                )}
+
                 <input
                   type="text"
-                  placeholder="Ej. Súper Aurrerá, Pasajes hoy, Cena domingo..."
+                  placeholder={
+                    movType === 'andrea_4000'
+                      ? 'Ej. Pollo y verdura, Tortillas, Comida hoy...'
+                      : 'Ej. Súper Aurrerá, Pasajes jueves...'
+                  }
                   value={movDesc}
                   onChange={(e) => setMovDesc(e.target.value)}
                   className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-sm"
                 />
-                <input
-                  type="number"
-                  placeholder="Monto $"
-                  value={movAmount}
-                  onChange={(e) => setMovAmount(e.target.value)}
-                  className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-sm"
-                />
+
                 <div className="grid grid-cols-2 gap-2">
+                  <input
+                    type="number"
+                    placeholder="Monto $"
+                    value={movAmount}
+                    onChange={(e) => setMovAmount(e.target.value)}
+                    className="bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-sm"
+                  />
                   <select
                     value={movMethod}
                     onChange={(e) => setMovMethod(e.target.value as PaymentMethod)}
                     className="bg-slate-800 border border-slate-700 rounded-xl px-2 py-2 text-xs"
                   >
+                    <option value="Digital">Digital (Tarjeta / SPEI)</option>
                     <option value="Efectivo">Efectivo</option>
-                    <option value="Digital">Digital</option>
-                  </select>
-                  <select
-                    value={movType}
-                    onChange={(e) => setMovType(e.target.value as ExpenseType)}
-                    className="bg-slate-800 border border-slate-700 rounded-xl px-2 py-2 text-xs"
-                  >
-                    <option value="super_sobrante">Súper (Con mi sobrante)</option>
-                    <option value="pasajes_oficina">Pasajes y Comedor</option>
-                    <option value="fuga_finde">Fuga Fin de Semana</option>
-                    <option value="fuga_tienda_app">Fuga Tienda / App</option>
                   </select>
                 </div>
-                <button type="submit" className="w-full bg-emerald-600 hover:bg-emerald-500 py-2.5 rounded-xl text-xs font-bold">
-                  Guardar Gasto
+
+                <button
+                  type="submit"
+                  className={`w-full py-2.5 rounded-xl text-xs font-bold transition ${
+                    movType === 'andrea_4000'
+                      ? 'bg-pink-600 hover:bg-pink-500 text-white'
+                      : 'bg-emerald-600 hover:bg-emerald-500 text-white'
+                  }`}
+                >
+                  {movType === 'andrea_4000'
+                    ? 'Guardar en Bolsa de $4,000 de Andrea'
+                    : 'Guardar Gasto'}
                 </button>
               </form>
 
               <div className="lg:col-span-2 bg-slate-900 border border-slate-800 rounded-2xl p-5 space-y-3">
-                <h3 className="font-semibold text-sm">Bitácora de Gastos y Auditoría de PDFs</h3>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <h3 className="font-semibold text-sm">Bitácora de Movimientos</h3>
+                  <div className="flex gap-1 bg-slate-800 p-1 rounded-lg text-xs">
+                    <button
+                      onClick={() => setHistoryFilter('todos')}
+                      className={`px-2.5 py-1 rounded-md font-semibold ${
+                        historyFilter === 'todos' ? 'bg-emerald-600 text-white' : 'text-slate-400'
+                      }`}
+                    >
+                      Todos
+                    </button>
+                    <button
+                      onClick={() => setHistoryFilter('andrea')}
+                      className={`px-2.5 py-1 rounded-md font-semibold ${
+                        historyFilter === 'andrea' ? 'bg-pink-600 text-white' : 'text-slate-400'
+                      }`}
+                    >
+                      Solo $4,000 Andrea
+                    </button>
+                    <button
+                      onClick={() => setHistoryFilter('alejandro')}
+                      className={`px-2.5 py-1 rounded-md font-semibold ${
+                        historyFilter === 'alejandro' ? 'bg-sky-600 text-white' : 'text-slate-400'
+                      }`}
+                    >
+                      Súper / Otros
+                    </button>
+                  </div>
+                </div>
+
                 <div className="space-y-2 max-h-[420px] overflow-y-auto pr-1">
-                  {state.movements.map((m) => (
+                  {metrics.filteredMovements.map((m) => (
                     <div
                       key={m.id}
-                      className="p-3 rounded-xl bg-slate-800/50 border border-slate-700/60 flex justify-between items-center gap-2"
+                      className={`p-3 rounded-xl border flex justify-between items-center gap-2 ${
+                        m.type === 'andrea_4000'
+                          ? 'bg-pink-950/20 border-pink-500/30'
+                          : 'bg-slate-800/50 border-slate-700/60'
+                      }`}
                     >
                       <div>
-                        <p className="text-sm font-medium">{m.description}</p>
+                        <div className="flex items-center gap-2">
+                          <p className="text-sm font-medium">{m.description}</p>
+                          {m.type === 'andrea_4000' && (
+                            <span className="text-[10px] px-2 py-0.5 rounded-full bg-pink-500/20 text-pink-300 font-semibold">
+                              Andrea • {m.andreaSubcat || 'Comida Diaria'}
+                            </span>
+                          )}
+                        </div>
                         <p className="text-xs text-slate-400">
                           {m.date} • {m.method} ({m.bank})
                         </p>
                       </div>
                       <div className="flex items-center gap-3">
-                        <span className="font-bold text-sm text-amber-400">{formatMXN(m.amount)}</span>
+                        <span className={`font-bold text-sm ${m.type === 'andrea_4000' ? 'text-pink-400' : 'text-amber-400'}`}>
+                          {formatMXN(m.amount)}
+                        </span>
                         <button
                           onClick={() =>
                             setState((prev) => ({
@@ -1093,7 +1283,7 @@ export default function App() {
                 Auto-Guardado en tu Laptop Servidor
               </h3>
               <p className="text-xs text-slate-400">
-                Mientras exista una URL activa aquí abajo, la aplicación <strong>guarda todos tus cambios automáticamente en tu laptop cada 45 segundos y cada vez que marcas un check</strong>:
+                Mientras exista una URL activa aquí abajo, la aplicación <strong>guarda todos tus cambios y los de Andrea automáticamente en tu laptop cada 45 segundos y cada vez que registran un gasto</strong>:
               </p>
               <input
                 type="text"
@@ -1127,7 +1317,7 @@ export default function App() {
                 Actualización Mensual por PDF (Con Gemini)
               </h3>
               <p className="text-xs text-slate-300">
-                ¡No necesitas copiar ni pegar renglones a mano! Cada mes, cuando te lleguen los <strong>PDFs de Banamex y Nu (ej. Octubre o Noviembre)</strong>, súbelos aquí en nuestro chat. Yo analizaré todas las hojas y te daré un bloque JSON listo para pegar aquí abajo con un clic:
+                Cada mes, cuando te lleguen los <strong>PDFs de Banamex y Nu (ej. Octubre o Noviembre)</strong>, súbelos aquí en nuestro chat. Yo analizaré todas las hojas y te daré un bloque JSON listo para pegar aquí abajo con un clic:
               </p>
               <textarea
                 rows={4}
@@ -1152,7 +1342,7 @@ export default function App() {
         {[
           { id: 'quincena', label: 'Quincena', icon: CheckSquare },
           { id: 'metas_boda', label: 'Boda/Metas', icon: Heart },
-          { id: 'gastos_graficos', label: 'Gráficos', icon: PieChart },
+          { id: 'gastos_graficos', label: 'Andy/Gastos', icon: PieChart },
           { id: 'deudas_alertas', label: 'Alertas', icon: BellRing },
           { id: 'servidor_pdf', label: 'Sync/PDF', icon: Server },
         ].map((tab) => {
