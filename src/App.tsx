@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import {
-  Wallet, Zap, Heart, Home, Flame, ShieldAlert, Plus, Trash2,
-  CheckCircle2, ArrowUpRight, Server, FileSpreadsheet, RefreshCw,
-  DollarSign, Clock, Banknote, Smartphone, Bus, Dog, Smile, Car, Target
+  Wallet, Zap, Heart, ShieldAlert, Plus,
+  ArrowUpRight, Server, FileSpreadsheet, RefreshCw,
+  DollarSign, Banknote
 } from 'lucide-react';
 
 // ==========================================
