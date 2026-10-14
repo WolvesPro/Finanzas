@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import {
   Wallet, Zap, Heart, ShieldAlert, Plus, Trash2,
   ArrowUpRight, Server, FileSpreadsheet, RefreshCw,
-  DollarSign, Banknote, Smartphone, X, BellRing,
+  DollarSign, Banknote, X, BellRing,
   CheckSquare, Flame, PieChart, Sparkles
 } from 'lucide-react';
 
