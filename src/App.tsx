@@ -3,7 +3,7 @@ import {
   Wallet, Zap, Heart, ShieldAlert, Plus, Trash2,
   ArrowUpRight, Server, FileSpreadsheet, RefreshCw,
   DollarSign, Banknote, X, BellRing,
-  CheckSquare, Flame, PieChart, Sparkles, Camera, FileText, Eye
+  CheckSquare, PieChart, Sparkles, Camera, FileText, Eye
 } from 'lucide-react';
 
 // ==========================================
