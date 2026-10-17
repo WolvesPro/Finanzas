@@ -3,7 +3,7 @@ import {
   Wallet, Zap, Heart, ShieldAlert, Plus, Trash2,
   ArrowUpRight, Server, FileSpreadsheet, RefreshCw,
   DollarSign, Banknote, X, BellRing,
-  CheckSquare, PieChart, Sparkles, Camera, FileText, Eye
+  CheckSquare, Flame, PieChart, Sparkles, Camera, FileText, Eye, Edit3
 } from 'lucide-react';
 
 // ==========================================
@@ -39,8 +39,8 @@ interface QuincenaChecklistItem {
 interface Movement {
   id: string;
   description: string;
-  itemsDetail?: string;    // Qué se compró exactamente (ej. en el súper o comida)
-  receiptPhoto?: string;   // Foto del ticket comprimida en Base64
+  itemsDetail?: string;
+  receiptPhoto?: string;
   amount: number;
   type: ExpenseType;
   andreaSubcat?: AndreaSubcategory;
@@ -79,19 +79,19 @@ interface GoalItem {
 }
 
 interface AppState {
-  cashPhysical: number;         // Efectivo disponible en cartera
-  cashDigital: number;          // Saldo disponible en cuentas digitales (Nu/Banamex)
+  cashPhysical: number;
+  cashDigital: number;
   quincenaApplied: boolean;
   lastQuincenaAmount: number;
-  andreaBudgetLimit: number;    // $4,000 quincenales de Andrea
+  andreaBudgetLimit: number;
   variableBudgets: {
-    pasajesOficina: number;     // $1,000 sugeridos por quincena (varía según días y comedor)
-    gasolinaCarro: number;      // $720 sugeridos por quincena ($360/sem)
-    gasLpBimestral: number;     // $500 cada 2 meses (17 Ago -> 17 Oct)
+    pasajesOficina: number;
+    gasolinaCarro: number;
+    gasLpBimestral: number;
   };
-  gasLpLastRefill: string;      // '2026-10-17' (Duró del 17 Ago al 17 Oct)
-  luzBillTotal: number;         // $3,000 vence 23 de octubre
-  luzEnvelopeSaved: number;     // $900 del abono -> sube a $3,000 al marcar el check de luz
+  gasLpLastRefill: string;
+  luzBillTotal: number;
+  luzEnvelopeSaved: number;
   domiciliacionReminderActive: boolean;
   checklist: QuincenaChecklistItem[];
   movements: Movement[];
@@ -101,8 +101,74 @@ interface AppState {
 }
 
 // ==========================================
-// ESTADO INICIAL CALIBRADO AL 17 DE OCTUBRE 2026
+// LISTA LIMPIA DE COMPROMISOS FIJOS (SIN PASAJES NI GASOLINA NI GAS LP)
 // ==========================================
+const DEFAULT_CHECKLIST: QuincenaChecklistItem[] = [
+  {
+    id: 'c1',
+    name: 'Comida diaria y gastos de Andrea (De ley)',
+    amount: 4000,
+    paid: false,
+    payMethod: 'Digital',
+    category: 'hogar',
+    note: 'Solo se descuenta de tu dinero actual cuando lo marques',
+  },
+  {
+    id: 'c2',
+    name: 'Ahorro Fijo Quincenal (Cascada a Boda/Metas)',
+    amount: 2400,
+    paid: false,
+    payMethod: 'Digital',
+    category: 'ahorro',
+    note: 'Al marcarlo se descuenta de tu saldo y sube a la Boda en Pestaña 2',
+  },
+  {
+    id: 'c3',
+    name: 'Completar Recibo Luz CFE (Vence 23 Oct)',
+    amount: 2100,
+    paid: false,
+    payMethod: 'Digital',
+    category: 'servicios',
+    note: '$1,500 de tu mitad + $600 tomados del abono',
+  },
+  {
+    id: 'c4',
+    name: 'Ortodoncia Valentina',
+    amount: 1300,
+    paid: false,
+    payMethod: 'Digital',
+    category: 'salud_mascotas',
+    note: 'Pago fijo quincenal de tratamiento',
+  },
+  {
+    id: 'c5',
+    name: 'Telcel (Pago mensual día 14)',
+    amount: 2000,
+    paid: false,
+    payMethod: 'Digital',
+    category: 'servicios',
+    note: 'Pago mensual que cae en estas fechas',
+  },
+  {
+    id: 'c6',
+    name: 'Costal Croquetas Perros (Cada 15 días)',
+    amount: 640,
+    paid: false,
+    payMethod: 'Digital',
+    category: 'salud_mascotas',
+    note: '1 costal quincenal ($630 - $650)',
+  },
+  {
+    id: 'c7',
+    name: 'Totalplay Internet',
+    amount: 710,
+    paid: false,
+    payMethod: 'Digital',
+    category: 'servicios',
+    note: 'Cargo mensual aproximado (~$710)',
+  },
+];
+
 const INITIAL_STATE: AppState = {
   cashPhysical: 1300,
   cashDigital: 820,
@@ -118,100 +184,17 @@ const INITIAL_STATE: AppState = {
   luzBillTotal: 3000,
   luzEnvelopeSaved: 900,
   domiciliacionReminderActive: true,
-  // SOLO PAGOS FIJOS DE UNA SOLA EXHIBICIÓN (AL PALOMEAR SE DESCUENTAN DE TU SALDO)
-  checklist: [
-    {
-      id: 'c1',
-      name: 'Transferir $4,000 a Andrea (Comida diaria y sus gastos)',
-      amount: 4000,
-      paid: false,
-      payMethod: 'Digital',
-      category: 'hogar',
-      note: 'Al marcarlo se descuenta de tu saldo y fondea la bolsa de $4,000 de Andrea',
-    },
-    {
-      id: 'c2',
-      name: 'Ahorro Fijo Quincenal (Cascada a Boda / Metas)',
-      amount: 2400,
-      paid: false,
-      payMethod: 'Digital',
-      category: 'ahorro',
-      note: 'Al marcarlo se descuenta de tu disponible y se suma a la Boda en Pestaña 2',
-    },
-    {
-      id: 'c3',
-      name: 'Apartar Resto de Luz CFE (Vence 23 Oct)',
-      amount: 2100,
-      paid: false,
-      payMethod: 'Digital',
-      category: 'servicios',
-      note: 'Descuenta $2,100 ($1,500 tuyos + $600 tomados) y deja el sobre Luz en $3,000',
-    },
-    {
-      id: 'c4',
-      name: 'Ortodoncia Valentina',
-      amount: 1300,
-      paid: false,
-      payMethod: 'Digital',
-      category: 'salud_mascotas',
-      note: 'Pago fijo quincenal (se descuenta de tu saldo al marcar)',
-    },
-    {
-      id: 'c5',
-      name: 'Pago Mensual Telcel (Día 14)',
-      amount: 2000,
-      paid: false,
-      payMethod: 'Digital',
-      category: 'servicios',
-      note: 'Se descuenta de tu saldo al marcarlo pagado',
-    },
-    {
-      id: 'c6',
-      name: 'Costal Croquetas Perros (Quincenal)',
-      amount: 640,
-      paid: false,
-      payMethod: 'Digital',
-      category: 'salud_mascotas',
-      note: '1 costal cada 15 días ($630 - $650)',
-    },
-    {
-      id: 'c7',
-      name: 'Totalplay Internet',
-      amount: 710,
-      paid: false,
-      payMethod: 'Digital',
-      category: 'servicios',
-      note: 'Mensualidad internet hogar (~$710)',
-    },
-  ],
+  checklist: DEFAULT_CHECKLIST,
   movements: [
     {
       id: 'gas-oct17',
-      description: 'Recarga de Gas LP (Duró 2 meses exactos: 17 Ago al 17 Oct)',
-      itemsDetail: 'Carga de Gas LP bimestral. Próxima recarga estimada: 17 de diciembre.',
+      description: 'Recarga de Gas LP (Duró 2 meses: 17 Ago a 17 Oct)',
+      itemsDetail: 'Duró exactamente 2 meses. Próxima recarga estimada: 17 Dic.',
       amount: 500,
       type: 'gas_lp',
       method: 'Digital',
       date: '2026-10-17',
       bank: 'Nu',
-    },
-    {
-      id: 'm1',
-      description: 'DLO UBER EATS (Auditoría PDF Banamex Oct)',
-      amount: 525.66,
-      type: 'fuga_finde',
-      method: 'Digital',
-      date: '2026-09-14',
-      bank: 'Banamex',
-    },
-    {
-      id: 'm2',
-      description: 'TELCEL RECARGAS FONY ($150 + $15 Banamex Oct)',
-      amount: 165.0,
-      type: 'fuga_tienda_app',
-      method: 'Digital',
-      date: '2026-09-24',
-      bank: 'Banamex',
     },
   ],
   extraIncomes: [],
@@ -247,14 +230,69 @@ const INITIAL_STATE: AppState = {
   ],
 };
 
-const STORAGE_KEY = 'finanzas_alejandro_andy_master_v12';
+// LLAVE PERMANENTE + RESCATE AUTOMÁTICO DE TUS DATOS GUARDADOS EN VERSIONES ANTERIORES
+const PERMANENT_STORAGE_KEY = 'finanzas_alejandro_andy_permanente';
+const LEGACY_KEYS = [
+  'finanzas_alejandro_andy_master_v12',
+  'finanzas_alejandro_andy_master_v11',
+  'finanzas_alejandro_andy_master_v10',
+  'finanzas_auto_v9',
+  'finanzas_alejandro_andy_v8',
+];
 const SERVER_URL_KEY = 'finanzas_laptop_server_url';
 
+function loadAndRescueState(): AppState {
+  const current = localStorage.getItem(PERMANENT_STORAGE_KEY);
+  if (current) {
+    try {
+      return JSON.parse(current);
+    } catch {
+      // continuar a rescate
+    }
+  }
+
+  for (const key of LEGACY_KEYS) {
+    const raw = localStorage.getItem(key);
+    if (raw) {
+      try {
+        const parsed = JSON.parse(raw);
+        if (parsed && Array.isArray(parsed.movements)) {
+          const cleanedChecklist: QuincenaChecklistItem[] = DEFAULT_CHECKLIST.map((defItem) => {
+            const existing = (parsed.checklist || []).find(
+              (old: QuincenaChecklistItem) => old.id === defItem.id || old.name.slice(0, 12) === defItem.name.slice(0, 12)
+            );
+            return existing
+              ? {
+                  ...defItem,
+                  paid: Boolean(existing.paid),
+                  payMethod: existing.payMethod || 'Digital',
+                }
+              : defItem;
+          });
+
+          const rescued: AppState = {
+            ...INITIAL_STATE,
+            ...parsed,
+            cashPhysical: typeof parsed.cashPhysical === 'number' && parsed.cashPhysical >= 0 ? parsed.cashPhysical : 1300,
+            cashDigital: typeof parsed.cashDigital === 'number' && parsed.cashDigital >= 0 ? parsed.cashDigital : 820,
+            variableBudgets: parsed.variableBudgets || INITIAL_STATE.variableBudgets,
+            checklist: cleanedChecklist,
+            movements: parsed.movements.length > 0 ? parsed.movements : INITIAL_STATE.movements,
+          };
+          localStorage.setItem(PERMANENT_STORAGE_KEY, JSON.stringify(rescued));
+          return rescued;
+        }
+      } catch {
+        // continuar
+      }
+    }
+  }
+
+  return INITIAL_STATE;
+}
+
 export default function App() {
-  const [state, setState] = useState<AppState>(() => {
-    const saved = localStorage.getItem(STORAGE_KEY);
-    return saved ? JSON.parse(saved) : INITIAL_STATE;
-  });
+  const [state, setState] = useState<AppState>(() => loadAndRescueState());
 
   const [activeTab, setActiveTab] = useState<'quincena' | 'metas_boda' | 'gastos_graficos' | 'deudas_alertas' | 'servidor_pdf'>('quincena');
 
@@ -262,14 +300,19 @@ export default function App() {
   const [showQuincenaModal, setShowQuincenaModal] = useState(false);
   const [quincenaInput, setQuincenaInput] = useState<string>('15600');
 
-  // Modal para ver foto de ticket en grande
+  // Modal para ajustar tu Efectivo y Digital manualmente
+  const [showBalanceEditModal, setShowBalanceEditModal] = useState(false);
+  const [editPhysicalInput, setEditPhysicalInput] = useState<string>(String(state.cashPhysical));
+  const [editDigitalInput, setEditDigitalInput] = useState<string>(String(state.cashDigital));
+
+  // Visor de foto de ticket
   const [previewTicketUrl, setPreviewTicketUrl] = useState<string | null>(null);
 
   // Deudas
   const [debtStrategy, setDebtStrategy] = useState<'avalanche' | 'snowball'>('avalanche');
   const [extraDebtBudget, setExtraDebtBudget] = useState<number>(1000);
 
-  // Formulario de Gastos (Pasajes, Gasolina, Gas LP, Súper con Ticket, Andrea $4,000)
+  // Formulario de Gastos
   const [movDesc, setMovDesc] = useState('');
   const [movItemsDetail, setMovItemsDetail] = useState('');
   const [movReceiptPhoto, setMovReceiptPhoto] = useState<string | undefined>(undefined);
@@ -288,11 +331,11 @@ export default function App() {
     return localStorage.getItem(SERVER_URL_KEY) || import.meta.env.VITE_API_URL || '';
   });
   const [syncStatus, setSyncStatus] = useState<'local' | 'synced' | 'syncing' | 'error'>('local');
-  const [lastSyncTime, setLastSyncTime] = useState<string>('Sin sincronizar aún');
+  const [lastSyncTime, setLastSyncTime] = useState<string>('Guardado en celular');
   const [monthlyJsonInput, setMonthlyJsonInput] = useState<string>('');
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    localStorage.setItem(PERMANENT_STORAGE_KEY, JSON.stringify(state));
   }, [state]);
 
   useEffect(() => {
@@ -336,9 +379,7 @@ export default function App() {
     };
   }, [state, serverUrl]);
 
-  // ==========================================
-  // COMPRESOR DE FOTO DE TICKET (PARA NO SATURAR MEMORIA NI SERVIDOR)
-  // ==========================================
+  // Compresor de foto de ticket
   const handleReceiptImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -355,8 +396,7 @@ export default function App() {
         const ctx = canvas.getContext('2d');
         if (ctx) {
           ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-          const compressedBase64 = canvas.toDataURL('image/jpeg', 0.65);
-          setMovReceiptPhoto(compressedBase64);
+          setMovReceiptPhoto(canvas.toDataURL('image/jpeg', 0.65));
         }
       };
       img.src = ev.target?.result as string;
@@ -364,9 +404,7 @@ export default function App() {
     reader.readAsDataURL(file);
   };
 
-  // ==========================================
-  // CASCADA DE METAS
-  // ==========================================
+  // Cascada de metas
   const applyCascadeToGoals = (amountDelta: number, currentGoals: GoalItem[]): GoalItem[] => {
     const copy = currentGoals.map((g) => ({ ...g }));
     if (amountDelta > 0) {
@@ -396,10 +434,11 @@ export default function App() {
   };
 
   // ==========================================
-  // MÉTRICAS Y CÁLCULOS EXACTOS EN TIEMPO REAL
+  // MÉTRICAS SIN NEGATIVOS FALSOS: SOLO RESTA LO QUE YA MARCASTE O GASTASTE
   // ==========================================
   const metrics = useMemo(() => {
     const totalCashNow = state.cashPhysical + state.cashDigital;
+
     const totalChecklist = state.checklist.reduce((acc, item) => acc + item.amount, 0);
     const paidChecklist = state.checklist.filter((i) => i.paid).reduce((acc, item) => acc + item.amount, 0);
     const pendingChecklist = totalChecklist - paidChecklist;
@@ -425,7 +464,7 @@ export default function App() {
       .filter((m) => m.andreaSubcat === 'Hogar / Otros')
       .reduce((a, b) => a + b.amount, 0);
 
-    // Gastos Variables por Categoría (Se descuentan conforme los agregas en Pestaña 3)
+    // Categorías variables en Pestaña 3
     const pasajesSpent = state.movements.filter((m) => m.type === 'pasajes_oficina').reduce((a, b) => a + b.amount, 0);
     const gasolinaSpent = state.movements.filter((m) => m.type === 'gasolina_carro').reduce((a, b) => a + b.amount, 0);
     const gasLpSpent = state.movements.filter((m) => m.type === 'gas_lp').reduce((a, b) => a + b.amount, 0);
@@ -434,14 +473,6 @@ export default function App() {
     const fugasFinde = state.movements.filter((m) => m.type === 'fuga_finde').reduce((a, b) => a + b.amount, 0);
     const fugasTienda = state.movements.filter((m) => m.type === 'fuga_tienda_app').reduce((a, b) => a + b.amount, 0);
     const totalFugas = fugasFinde + fugasTienda;
-
-    // Lo que te queda realmente libre hoy si pagas todos los fijos pendientes + reservas de pasajes/gasolina restantes
-    const pasajesRemainingReserve = Math.max(0, state.variableBudgets.pasajesOficina - pasajesSpent);
-    const gasolinaRemainingReserve = Math.max(0, state.variableBudgets.gasolinaCarro - gasolinaSpent);
-    const luzInitial900 = state.checklist.find((i) => i.id === 'c3')?.paid ? 0 : 900;
-
-    const sobranteParaTuSuper =
-      totalCashNow - pendingChecklist - luzInitial900 - pasajesRemainingReserve - gasolinaRemainingReserve;
 
     const r = 0.13 / 12;
     const n = 36;
@@ -475,7 +506,6 @@ export default function App() {
       fugasFinde,
       fugasTienda,
       totalFugas,
-      sobranteParaTuSuper,
       fugas3YearsNu,
       filteredMovements,
     };
@@ -504,7 +534,18 @@ export default function App() {
     setShowQuincenaModal(false);
   };
 
-  // Cambiar método de pago (Digital / Efectivo) de un item de la checklist antes de marcarlo
+  const handleSaveManualBalances = (e: React.FormEvent) => {
+    e.preventDefault();
+    const phys = parseFloat(editPhysicalInput);
+    const dig = parseFloat(editDigitalInput);
+    setState((prev) => ({
+      ...prev,
+      cashPhysical: isNaN(phys) ? prev.cashPhysical : phys,
+      cashDigital: isNaN(dig) ? prev.cashDigital : dig,
+    }));
+    setShowBalanceEditModal(false);
+  };
+
   const changeChecklistItemMethod = (id: string, method: PaymentMethod, e: React.MouseEvent) => {
     e.stopPropagation();
     setState((prev) => ({
@@ -515,7 +556,6 @@ export default function App() {
     }));
   };
 
-  // AL MARCAR UN CHECK: SE DESCUENTA REALMENTE DE TU SALDO DIGITAL O EFECTIVO
   const toggleChecklistItem = (id: string) => {
     setState((prev) => {
       const targetItem = prev.checklist.find((i) => i.id === id);
@@ -574,7 +614,6 @@ export default function App() {
 
     setState((prev) => ({
       ...prev,
-      // Si es un gasto de los $4,000 de Andrea, sale de su bolsa de $4,000 (que ya descontaste al darle el check a sus $4,000)
       cashPhysical:
         movType !== 'andrea_4000' && movMethod === 'Efectivo'
           ? prev.cashPhysical - val
@@ -610,7 +649,6 @@ export default function App() {
   const handleDeleteMovement = (mov: Movement) => {
     setState((prev) => ({
       ...prev,
-      // Si borras un gasto tuyo, te devuelve el dinero a tu saldo
       cashPhysical:
         mov.type !== 'andrea_4000' && mov.method === 'Efectivo'
           ? prev.cashPhysical + mov.amount
@@ -666,9 +704,7 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 pb-24 md:pb-10 font-sans">
-      {/* ==========================================
-          MODAL VISOR DE FOTO DE TICKET DEL SÚPER
-      ========================================== */}
+      {/* MODAL VISOR DE FOTO DE TICKET */}
       {previewTicketUrl && (
         <div
           onClick={() => setPreviewTicketUrl(null)}
@@ -686,16 +722,61 @@ export default function App() {
             </div>
             <img
               src={previewTicketUrl}
-              alt="Ticket de compra"
+              alt="Ticket"
               className="w-full max-h-[75vh] object-contain rounded-xl border border-slate-800"
             />
           </div>
         </div>
       )}
 
-      {/* ==========================================
-          MODAL PARA INGRESAR CANTIDAD EXACTA DE QUINCENA
-      ========================================== */}
+      {/* MODAL PARA EDITAR TU EFECTIVO Y DIGITAL MANUALMENTE */}
+      {showBalanceEditModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm p-4">
+          <form
+            onSubmit={handleSaveManualBalances}
+            className="bg-slate-900 border border-slate-700 rounded-2xl p-6 w-full max-w-md shadow-2xl space-y-4"
+          >
+            <div className="flex justify-between items-center">
+              <h2 className="text-base font-bold text-emerald-400 flex items-center gap-2">
+                <Edit3 className="w-4 h-4" /> Ajustar Mi Efectivo y Digital Actual
+              </h2>
+              <button type="button" onClick={() => setShowBalanceEditModal(false)} className="text-slate-400 hover:text-white">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs text-slate-400 block mb-1">Efectivo en mano ($):</label>
+                <input
+                  type="number"
+                  step="any"
+                  value={editPhysicalInput}
+                  onChange={(e) => setEditPhysicalInput(e.target.value)}
+                  className="w-full bg-slate-800 border border-slate-600 rounded-xl px-3 py-2 text-lg font-bold text-emerald-400"
+                />
+              </div>
+              <div>
+                <label className="text-xs text-slate-400 block mb-1">Saldo Digital ($):</label>
+                <input
+                  type="number"
+                  step="any"
+                  value={editDigitalInput}
+                  onChange={(e) => setEditDigitalInput(e.target.value)}
+                  className="w-full bg-slate-800 border border-slate-600 rounded-xl px-3 py-2 text-lg font-bold text-sky-400"
+                />
+              </div>
+            </div>
+            <button
+              type="submit"
+              className="w-full py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold"
+            >
+              Guardar Saldos Actuales
+            </button>
+          </form>
+        </div>
+      )}
+
+      {/* MODAL PARA SUMAR QUINCENA */}
       {showQuincenaModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm p-4">
           <form
@@ -704,7 +785,7 @@ export default function App() {
           >
             <div className="flex justify-between items-center">
               <h2 className="text-lg font-bold text-emerald-400 flex items-center gap-2">
-                <DollarSign className="w-5 h-5" /> Ingresar Depósito de Quincena
+                <DollarSign className="w-5 h-5" /> Sumar Depósito de Quincena
               </h2>
               <button
                 type="button"
@@ -715,24 +796,21 @@ export default function App() {
               </button>
             </div>
             <p className="text-xs text-slate-300">
-              Escribe la cantidad exacta que te depositaron. Se sumará a tu Saldo Digital y, conforme vayas marcando los checks de la Pestaña 1 (Andrea $4,000, Telcel, Luz, etc.), <strong>se irá descontando en vivo de tu saldo</strong>.
+              Escribe la cantidad exacta que recibiste de quincena. Se sumará a tu Saldo Digital. <strong>No se descontará ningún gasto fijo hasta que tú marques su casilla abajo.</strong>
             </p>
-            <div>
-              <label className="text-xs text-slate-400 block mb-1">Monto depositado ($ MXN):</label>
-              <input
-                type="number"
-                step="any"
-                value={quincenaInput}
-                onChange={(e) => setQuincenaInput(e.target.value)}
-                className="w-full bg-slate-800 border border-slate-600 rounded-xl px-4 py-3 text-xl font-bold text-emerald-400 focus:outline-none focus:border-emerald-500"
-                autoFocus
-              />
-            </div>
-            <div className="flex gap-2 pt-2">
+            <input
+              type="number"
+              step="any"
+              value={quincenaInput}
+              onChange={(e) => setQuincenaInput(e.target.value)}
+              className="w-full bg-slate-800 border border-slate-600 rounded-xl px-4 py-3 text-xl font-bold text-emerald-400"
+              autoFocus
+            />
+            <div className="flex gap-2">
               <button
                 type="button"
                 onClick={() => setShowQuincenaModal(false)}
-                className="flex-1 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-semibold"
+                className="flex-1 py-2.5 rounded-xl bg-slate-800 text-xs font-semibold"
               >
                 Cancelar
               </button>
@@ -747,31 +825,27 @@ export default function App() {
         </div>
       )}
 
-      {/* ==========================================
-          BANNER PERMANENTE DE NOTIFICACIÓN: CANCELAR DOMICILIACIONES BANAMEX
-      ========================================== */}
+      {/* BANNER RECORDATORIO BANAMEX */}
       {state.domiciliacionReminderActive && (
-        <div className="bg-rose-950/90 border-b border-rose-500/50 px-4 py-2.5 text-xs">
+        <div className="bg-rose-950/90 border-b border-rose-500/50 px-4 py-2 text-xs">
           <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-2">
             <div className="flex items-center gap-2 text-rose-200">
-              <BellRing className="w-4 h-4 text-rose-400 animate-bounce shrink-0" />
+              <BellRing className="w-4 h-4 text-rose-400 shrink-0" />
               <span>
-                <strong>RECORDATORIO BANAMEX:</strong> Cuando Banamex te notifique intentos de cobro de <code>Belvo-Recotex (BTE1912023D6)</code> o <code>TU PRESTAMO (BME2211039AA)</code>, recuerda <strong>cancelar la domiciliación en la app</strong>.
+                <strong>RECORDATORIO BANAMEX:</strong> Cuando Banamex notifique cobros de <code>Belvo (BTE1912023D6)</code> o <code>TU PRESTAMO (BME2211039AA)</code>, recuerda cancelar la domiciliación.
               </span>
             </div>
             <button
               onClick={() => setState((prev) => ({ ...prev, domiciliacionReminderActive: false }))}
-              className="px-2.5 py-1 rounded-lg bg-rose-500/20 hover:bg-rose-500/30 text-rose-200 font-semibold whitespace-nowrap"
+              className="px-2 py-0.5 rounded bg-rose-500/20 text-rose-200 font-semibold"
             >
-              Ocultar por hoy
+              Ocultar
             </button>
           </div>
         </div>
       )}
 
-      {/* ==========================================
-          HEADER PRINCIPAL
-      ========================================== */}
+      {/* HEADER */}
       <header className="border-b border-slate-800 bg-slate-900/90 backdrop-blur sticky top-0 z-30">
         <div className="max-w-7xl mx-auto px-4 py-3 flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-3">
@@ -784,41 +858,49 @@ export default function App() {
               </h1>
               <p className="text-xs text-slate-400">
                 Efectivo: <strong className="text-emerald-400">{formatMXN(state.cashPhysical)}</strong> • Digital:{' '}
-                <strong className="text-sky-400">{formatMXN(state.cashDigital)}</strong> • Auto-Sync: {lastSyncTime}
+                <strong className="text-sky-400">{formatMXN(state.cashDigital)}</strong> • {lastSyncTime}
               </p>
             </div>
           </div>
 
           <div className="flex items-center gap-2">
             <button
+              onClick={() => {
+                setEditPhysicalInput(String(state.cashPhysical));
+                setEditDigitalInput(String(state.cashDigital));
+                setShowBalanceEditModal(true);
+              }}
+              className="px-3 py-2 rounded-xl text-xs bg-slate-800 hover:bg-slate-700 border border-slate-700 flex items-center gap-1.5 text-slate-200"
+              title="Ajustar mi efectivo o saldo digital"
+            >
+              <Edit3 className="w-3.5 h-3.5 text-emerald-400" />
+              Ajustar Saldos
+            </button>
+
+            <button
               onClick={() => setShowQuincenaModal(true)}
-              className="px-3.5 py-2 rounded-xl text-xs font-bold transition bg-amber-500 hover:bg-amber-400 text-slate-950 flex items-center gap-1.5 shadow-lg shadow-amber-500/10"
+              className="px-3.5 py-2 rounded-xl text-xs font-bold transition bg-amber-500 hover:bg-amber-400 text-slate-950 flex items-center gap-1.5"
             >
               <DollarSign className="w-4 h-4" />
-              Registrar Quincena
+              + Quincena
             </button>
 
             <button
               onClick={() => syncWithLaptop('push')}
               className="px-3 py-2 rounded-xl text-xs bg-slate-800 hover:bg-slate-700 border border-slate-700 flex items-center gap-1.5"
-              title="Sincronizar ahora con la Laptop"
             >
               <RefreshCw className={`w-3.5 h-3.5 ${syncStatus === 'syncing' ? 'animate-spin text-amber-400' : 'text-emerald-400'}`} />
-              <span className="hidden sm:inline">
-                {syncStatus === 'synced' ? 'Auto-Sync OK' : syncStatus === 'error' ? 'Offline' : 'Sync Laptop'}
-              </span>
             </button>
           </div>
         </div>
 
-        {/* NAVEGACIÓN POR PESTAÑAS (ESCRITORIO) */}
         <nav className="hidden md:flex max-w-7xl mx-auto px-4 gap-1 pt-1 overflow-x-auto">
           {[
-            { id: 'quincena', label: '1. Mi Quincena y Pagos Fijos (Descuentan Saldo)', icon: CheckSquare },
+            { id: 'quincena', label: '1. Mi Dinero Actual y Checks de Gastos Fijos', icon: CheckSquare },
             { id: 'metas_boda', label: '2. Boda 14 Nov ($10,000), Cascada y Extras', icon: Heart },
             { id: 'gastos_graficos', label: '3. Súper (Ticket), Pasajes, Gasolina, Gas y $4k Andy', icon: PieChart },
             { id: 'deudas_alertas', label: '4. Deudas, Quitas y Alertas Domiciliación', icon: ShieldAlert },
-            { id: 'servidor_pdf', label: '5. Auto-Sync Laptop & Corte PDF', icon: Server },
+            { id: 'servidor_pdf', label: '5. Sincronizar Laptop & Rescate de Datos', icon: Server },
           ].map((tab) => {
             const Icon = tab.icon;
             return (
@@ -841,21 +923,20 @@ export default function App() {
 
       <main className="max-w-7xl mx-auto px-4 py-6 space-y-6">
         {/* ==========================================
-            PESTAÑA 1: QUINCENA Y CHECKLIST QUE SÍ DESCUENTA DE TU SALDO
+            PESTAÑA 1: DINERO ACTUAL Y CHECKLIST (SOLO RESTA SI LO MARCAS)
         ========================================== */}
         {activeTab === 'quincena' && (
           <div className="space-y-6">
-            {/* FILA DE TARJETAS KPI */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-              <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 flex justify-between items-center">
+              <div className="bg-emerald-950/30 border border-emerald-500/40 rounded-2xl p-4 flex justify-between items-center">
                 <div>
-                  <span className="text-xs text-slate-400 uppercase">Tu Dinero Actual en Caja</span>
+                  <span className="text-xs text-emerald-300 uppercase font-semibold">Mi Dinero Disponible Hoy</span>
                   <p className="text-2xl font-bold text-emerald-400 mt-1">{formatMXN(metrics.totalCashNow)}</p>
-                  <p className="text-xs text-slate-400 mt-0.5">
-                    Efvo: {formatMXN(state.cashPhysical)} | Dig: {formatMXN(state.cashDigital)}
+                  <p className="text-xs text-slate-300 mt-0.5">
+                    Efectivo: <strong>{formatMXN(state.cashPhysical)}</strong> | Digital: <strong>{formatMXN(state.cashDigital)}</strong>
                   </p>
                 </div>
-                <Banknote className="w-8 h-8 text-emerald-500/30" />
+                <Banknote className="w-8 h-8 text-emerald-500/40" />
               </div>
 
               <div className="bg-pink-950/30 border border-pink-500/40 rounded-2xl p-4">
@@ -880,33 +961,32 @@ export default function App() {
                   {formatMXN(state.luzEnvelopeSaved)} / $3,000
                 </p>
                 <p className="text-xs text-amber-200/80 mt-1">
-                  Marca el check de Luz abajo para pasar de $900 a $3,000
+                  Sube a $3,000 cuando marques el check de Luz abajo
                 </p>
               </div>
 
-              <div className="bg-emerald-950/30 border border-emerald-500/40 rounded-2xl p-4">
-                <span className="text-xs text-emerald-300 uppercase">Sobrante Libre para Tu Súper</span>
-                <p className="text-2xl font-bold text-emerald-400 mt-1">{formatMXN(metrics.sobranteParaTuSuper)}</p>
-                <p className="text-xs text-emerald-200/80 mt-1">
-                  Descontando fijos pendientes y reserva de pasajes/gasolina
+              <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4">
+                <span className="text-xs text-slate-400 uppercase">Fijos Ya Pagados (Marcados)</span>
+                <p className="text-2xl font-bold text-sky-400 mt-1">{formatMXN(metrics.paidChecklist)}</p>
+                <p className="text-xs text-slate-400 mt-1">
+                  Por pagar después: {formatMXN(metrics.pendingChecklist)} (No se restan aún)
                 </p>
               </div>
             </div>
 
-            {/* CHECKLIST DE PAGOS DE UNA EXHIBICIÓN (DESCUENTA EN VIVO DE DIGITAL O EFECTIVO) */}
             <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 space-y-4">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div>
                   <h2 className="font-semibold text-base">
-                    Pagos Fijos de una Sola Exhibición (Al marcarlos se descuentan de tu Dinero en Caja)
+                    Checklist de Gastos Fijos (Solo se descuentan de tu Dinero Disponible cuando los marcas)
                   </h2>
                   <p className="text-xs text-slate-400">
-                    Nota: <strong>Pasajes de oficina, Gasolina del carro y Gas LP</strong> ahora se registran por separado en la <strong>Pestaña 3</strong> porque varían cada vez que los gastas.
+                    Si no están marcados, <strong>no se restan de tu dinero actual</strong>. Cuando pagues uno (ej. los $4,000 de Andrea o Telcel), márcalo y se descontará de Digital o Efectivo.
                   </p>
                 </div>
                 {ahorroCheckItem?.paid && (
                   <span className="px-3 py-1 rounded-full bg-purple-500/20 border border-purple-500/40 text-purple-300 text-xs font-bold">
-                    ✓ +$2,400 descontados y enviados a Boda (Pestaña 2)
+                    ✓ +$2,400 enviados a Boda (Pestaña 2)
                   </span>
                 )}
               </div>
@@ -935,7 +1015,7 @@ export default function App() {
                         </p>
                         <p className="text-xs text-slate-400 mt-0.5">{item.note}</p>
                         <div className="flex items-center gap-1.5 mt-2">
-                          <span className="text-[10px] text-slate-400">Descontar de:</span>
+                          <span className="text-[10px] text-slate-400">Sale de:</span>
                           {(['Digital', 'Efectivo'] as const).map((m) => (
                             <button
                               key={m}
@@ -958,7 +1038,7 @@ export default function App() {
                         {item.paid ? `-${formatMXN(item.amount)}` : formatMXN(item.amount)}
                       </span>
                       <p className="text-[10px] text-slate-400 mt-0.5">
-                        {item.paid ? 'Ya descontado' : 'Pendiente'}
+                        {item.paid ? 'Descontado' : 'Sin descontar'}
                       </p>
                     </div>
                   </div>
@@ -969,7 +1049,7 @@ export default function App() {
         )}
 
         {/* ==========================================
-            PESTAÑA 2: METAS EN CASCADA (BODA 14 NOV -> EMERGENCIA -> CASA -> CARRO)
+            PESTAÑA 2: METAS EN CASCADA
         ========================================== */}
         {activeTab === 'metas_boda' && (
           <div className="space-y-6">
@@ -980,11 +1060,11 @@ export default function App() {
                   Sistema de Llenado en Cascada Activo
                 </h3>
                 <p className="text-xs text-slate-300">
-                  Todo tu <strong>Ahorro Fijo ($2,400/quincena)</strong> y tus <strong>Entradas Extra</strong> llenan primero la <strong>Meta #1: Boda 14 de Noviembre ($10,000)</strong>. Cuando llega a $10,000, el excedente pasa automáticamente a llenar el <strong>Fondo de Emergencia</strong>, luego <strong>Hogar Propio</strong> y después <strong>Carro</strong>.
+                  Cuando marcas el check de <strong>Ahorro Fijo ($2,400)</strong> o metes un <strong>Ingreso Extra</strong>, se llena primero la <strong>Boda del 14 de Noviembre ($10,000)</strong> y al completarse pasa automáticamente a las siguientes metas.
                 </p>
               </div>
               <div className="text-right">
-                <span className="text-xs text-slate-400">Total Acumulado en Metas</span>
+                <span className="text-xs text-slate-400">Total Ahorrado</span>
                 <p className="text-xl font-bold text-emerald-400">{formatMXN(metrics.totalSavedInGoals)}</p>
               </div>
             </div>
@@ -992,11 +1072,11 @@ export default function App() {
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
               <form onSubmit={handleAddExtraIncome} className="bg-slate-900 border border-slate-800 rounded-2xl p-5 space-y-4 h-fit">
                 <h3 className="font-semibold text-sm flex items-center gap-2 text-emerald-400">
-                  <ArrowUpRight className="w-4 h-4" /> Registrar Entrada Extra (Desarrollo / Tanda / Aguinaldo)
+                  <ArrowUpRight className="w-4 h-4" /> Registrar Entrada Extra
                 </h3>
                 <input
                   type="text"
-                  placeholder="Ej. Pago sistema desarrollo, Tanda, Bono..."
+                  placeholder="Ej. Pago desarrollo, Tanda, Bono..."
                   value={extraSource}
                   onChange={(e) => setExtraSource(e.target.value)}
                   className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-sm"
@@ -1009,21 +1089,15 @@ export default function App() {
                   className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-sm"
                 />
                 <button type="submit" className="w-full bg-emerald-600 hover:bg-emerald-500 py-2.5 rounded-xl text-xs font-bold">
-                  Inyectar Dinero Extra a la Cascada
+                  Sumar Dinero Extra
                 </button>
               </form>
 
               <div className="lg:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-4">
                 {state.goals.map((g) => {
                   const pct = Math.min(100, (g.saved / g.target) * 100);
-                  const isCompleted = g.saved >= g.target;
                   return (
-                    <div
-                      key={g.id}
-                      className={`bg-slate-900 border rounded-2xl p-5 space-y-3 ${
-                        isCompleted ? 'border-emerald-500/60 bg-emerald-950/10' : 'border-slate-800'
-                      }`}
-                    >
+                    <div key={g.id} className="bg-slate-900 border border-slate-800 rounded-2xl p-5 space-y-3">
                       <div className="flex justify-between items-start">
                         <div>
                           <span className="text-xs text-emerald-400 font-semibold">{g.deadline}</span>
@@ -1033,12 +1107,10 @@ export default function App() {
                           {pct.toFixed(0)}%
                         </span>
                       </div>
-
                       <p className="text-2xl font-bold">
                         {formatMXN(g.saved)}{' '}
                         <span className="text-sm text-slate-400 font-normal">/ {formatMXN(g.target)}</span>
                       </p>
-
                       <div className="w-full h-3 bg-slate-800 rounded-full overflow-hidden">
                         <div className="h-full bg-emerald-500 transition-all" style={{ width: `${pct}%` }} />
                       </div>
@@ -1055,11 +1127,11 @@ export default function App() {
         ========================================== */}
         {activeTab === 'gastos_graficos' && (
           <div className="space-y-6">
-            {/* MEDIDORES DE PRESUPUESTO VARIABLE: PASAJES OFICINA, GASOLINA CARRO Y GAS LP BIMESTRAL */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {/* MEDIDORES DE PRESUPUESTO VARIABLE: PASAJES OFICINA, GASOLINA CARRO Y GAS LP */}
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
               <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 space-y-2">
                 <div className="flex justify-between text-xs">
-                  <span className="text-sky-300 font-bold uppercase">Pasajes y Comidas Oficina</span>
+                  <span className="text-sky-300 font-bold uppercase">🚌 Pasajes y Comidas</span>
                   <span>
                     {formatMXN(metrics.pasajesSpent)} / {formatMXN(state.variableBudgets.pasajesOficina)}
                   </span>
@@ -1071,13 +1143,13 @@ export default function App() {
                   />
                 </div>
                 <p className="text-[11px] text-slate-400">
-                  Restan {formatMXN(Math.max(0, state.variableBudgets.pasajesOficina - metrics.pasajesSpent))} de tu presupuesto quincenal (~$250/día).
+                  Varía por día de oficina (~$250/día).
                 </p>
               </div>
 
               <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 space-y-2">
                 <div className="flex justify-between text-xs">
-                  <span className="text-amber-300 font-bold uppercase">Gasolina Carro Mazda</span>
+                  <span className="text-amber-300 font-bold uppercase">⛽ Gasolina Carro</span>
                   <span>
                     {formatMXN(metrics.gasolinaSpent)} / {formatMXN(state.variableBudgets.gasolinaCarro)}
                   </span>
@@ -1089,14 +1161,14 @@ export default function App() {
                   />
                 </div>
                 <p className="text-[11px] text-slate-400">
-                  Tope quincenal: $720 ($360 por semana). Registra cada carga abajo.
+                  Presupuesto: $720 quincenal ($360/sem).
                 </p>
               </div>
 
               <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 space-y-2">
                 <div className="flex justify-between text-xs">
-                  <span className="text-orange-300 font-bold uppercase">Gas LP (Ciclo 2 Meses)</span>
-                  <span>Pagado Hoy: {formatMXN(metrics.gasLpSpent)}</span>
+                  <span className="text-orange-300 font-bold uppercase">🔥 Gas LP (2 Meses)</span>
+                  <span>{formatMXN(metrics.gasLpSpent)} / $500</span>
                 </div>
                 <div className="w-full h-2.5 bg-slate-800 rounded-full overflow-hidden">
                   <div
@@ -1105,21 +1177,32 @@ export default function App() {
                   />
                 </div>
                 <p className="text-[11px] text-slate-400">
-                  Duró del <strong>17 Ago al 17 Oct (2 meses)</strong>. Próxima recarga estimada: <strong>17 Dic 2026</strong>.
+                  Duró del <strong>17 Ago al 17 Oct</strong>. Próxima: <strong>17 Dic</strong>.
+                </p>
+              </div>
+
+              <div className="bg-rose-950/20 border border-rose-500/30 rounded-2xl p-4 space-y-1">
+                <div className="flex justify-between items-center text-xs">
+                  <span className="text-rose-300 font-bold uppercase">Fugas Detectadas</span>
+                  <Flame className="w-4 h-4 text-rose-400" />
+                </div>
+                <p className="text-lg font-bold text-rose-400">{formatMXN(metrics.totalFugas)}</p>
+                <p className="text-[11px] text-slate-400">
+                  En 3 años al 13%: <strong className="text-emerald-400">{formatMXN(metrics.fugas3YearsNu)}</strong>
                 </p>
               </div>
             </div>
 
-            {/* BLOQUE EXCLUSIVO PARA ANDREA: RASTREADOR DE SUS $4,000 QUINCENALES */}
+            {/* BOLSA EXCLUSIVA DE $4,000 DE ANDREA */}
             <div className="bg-pink-950/20 border border-pink-500/40 rounded-2xl p-5 space-y-4">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
                   <span className="text-xs uppercase tracking-wider text-pink-300 font-bold flex items-center gap-1.5">
                     <Heart className="w-4 h-4 text-pink-400" />
-                    Control Exclusivo de Andrea: ¿En qué se van los $4,000 de la quincena?
+                    Bolsa Quincenal de $4,000 de Andrea (Comida diaria y sus gastos)
                   </span>
                   <p className="text-xs text-slate-300 mt-0.5">
-                    Aquí Andrea puede ver exactamente cuánto lleva gastado de sus $4,000 y en qué subcategorías.
+                    Lo que Andrea registre en su categoría se descuenta solo de estos $4,000.
                   </p>
                 </div>
                 <div className="text-right">
@@ -1157,26 +1240,26 @@ export default function App() {
               </div>
             </div>
 
-            {/* FORMULARIO CON FOTO DE TICKET Y DETALLE DE ARTÍCULOS + BITÁCORA */}
+            {/* FORMULARIO CON TICKET Y DETALLE + BITÁCORA */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
               <form onSubmit={handleAddMovement} className="bg-slate-900 border border-slate-800 rounded-2xl p-5 space-y-3.5 h-fit">
                 <h3 className="font-semibold text-sm flex items-center gap-2">
-                  <Plus className="w-4 h-4 text-emerald-400" /> Registrar Gasto (Descuenta en Vivo)
+                  <Plus className="w-4 h-4 text-emerald-400" /> Agregar Gasto por Categoría
                 </h3>
 
                 <div>
-                  <label className="text-xs text-slate-400 block mb-1">Categoría del Gasto:</label>
+                  <label className="text-xs text-slate-400 block mb-1">Categoría:</label>
                   <select
                     value={movType}
                     onChange={(e) => setMovType(e.target.value as ExpenseType)}
                     className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-xs font-semibold text-white"
                   >
                     <option value="super_sobrante">🛒 Súper / Despensa (Con Foto de Ticket / Qué fue)</option>
-                    <option value="pasajes_oficina">🚌 Pasajes y Comidas Oficina (Varía por día)</option>
-                    <option value="gasolina_carro">⛽ Gasolina Carro Mazda ($360/sem)</option>
-                    <option value="gas_lp">🔥 Gas LP ($500 cada 2 meses)</option>
-                    <option value="andrea_4000">💖 Bolsa $4,000 de Andrea (Comida diaria / Sus gastos)</option>
-                    <option value="fuga_finde">🍕 Fuga Fin de Semana (Restaurantes / Salidas)</option>
+                    <option value="pasajes_oficina">🚌 Pasajes y Comidas Oficina (Alejandro)</option>
+                    <option value="gasolina_carro">⛽ Gasolina Carro Mazda</option>
+                    <option value="gas_lp">🔥 Gas LP (Cada 2 meses)</option>
+                    <option value="andrea_4000">💖 Bolsa $4,000 de Andrea (No descuenta de Alejandro)</option>
+                    <option value="fuga_finde">🍕 Fuga Fin de Semana</option>
                     <option value="fuga_tienda_app">📱 Fuga Tienda / App / Recarga</option>
                   </select>
                 </div>
@@ -1199,40 +1282,30 @@ export default function App() {
 
                 <input
                   type="text"
-                  placeholder={
-                    movType === 'super_sobrante'
-                      ? 'Ej. Súper Aurrerá / Walmart quincenal...'
-                      : movType === 'pasajes_oficina'
-                      ? 'Ej. Ida oficina: $212 pasajes + $60 comedor...'
-                      : movType === 'gasolina_carro'
-                      ? 'Ej. Carga gasolina semana 1...'
-                      : 'Descripción del gasto...'
-                  }
+                  placeholder="Concepto (ej. Súper Aurrerá, Pasajes martes, Gasolina...)"
                   value={movDesc}
                   onChange={(e) => setMovDesc(e.target.value)}
                   className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-sm"
                 />
 
-                {/* CAMPO PARA PONER QUÉ FUE EXACTAMENTE (ARTÍCULOS DEL SÚPER O DETALLE DE PASAJES) */}
                 <div>
                   <label className="text-xs text-slate-400 flex items-center gap-1 mb-1">
                     <FileText className="w-3.5 h-3.5 text-emerald-400" />
-                    ¿Qué se compró o qué incluyó? (Opcional):
+                    ¿Qué fue o qué compraste? (Opcional):
                   </label>
                   <textarea
                     rows={2}
-                    placeholder="Ej. Leche, huevo, papel, jabón, verdura... (o $170 autobús + $28 + $14 + $50 comida)"
+                    placeholder="Ej. Leche, huevo, carne, verdura... o $170+$28+$14 pasajes + $60 comida"
                     value={movItemsDetail}
                     onChange={(e) => setMovItemsDetail(e.target.value)}
                     className="w-full bg-slate-800 border border-slate-700 rounded-xl p-2.5 text-xs"
                   />
                 </div>
 
-                {/* BOTÓN PARA SUBIR O TOMAR FOTO DEL TICKET DEL SÚPER */}
                 <div>
                   <label className="text-xs text-slate-300 flex items-center justify-between mb-1">
                     <span className="flex items-center gap-1">
-                      <Camera className="w-3.5 h-3.5 text-sky-400" /> Foto del Ticket (Cámara o Galería):
+                      <Camera className="w-3.5 h-3.5 text-sky-400" /> Subir Foto del Ticket (Opcional):
                     </span>
                     {movReceiptPhoto && (
                       <button
@@ -1247,17 +1320,9 @@ export default function App() {
                   <input
                     type="file"
                     accept="image/*"
-                    capture="environment"
                     onChange={handleReceiptImageUpload}
                     className="block w-full text-xs text-slate-400 file:mr-2 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-slate-800 file:text-sky-300 hover:file:bg-slate-700 cursor-pointer"
                   />
-                  {movReceiptPhoto && (
-                    <img
-                      src={movReceiptPhoto}
-                      alt="Vista previa ticket"
-                      className="mt-2 h-24 w-auto rounded-lg border border-slate-700 object-cover"
-                    />
-                  )}
                 </div>
 
                 <div className="grid grid-cols-2 gap-2">
@@ -1274,7 +1339,7 @@ export default function App() {
                     onChange={(e) => setMovMethod(e.target.value as PaymentMethod)}
                     className="bg-slate-800 border border-slate-700 rounded-xl px-2 py-2 text-xs"
                   >
-                    <option value="Digital">Digital (Tarjeta / SPEI)</option>
+                    <option value="Digital">Digital</option>
                     <option value="Efectivo">Efectivo</option>
                   </select>
                 </div>
@@ -1283,14 +1348,13 @@ export default function App() {
                   type="submit"
                   className="w-full py-2.5 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-white transition"
                 >
-                  Guardar Gasto y Descontar
+                  Guardar Gasto
                 </button>
               </form>
 
-              {/* BITÁCORA CON VISOR DE TICKET Y DETALLE DE ARTÍCULOS */}
               <div className="lg:col-span-2 bg-slate-900 border border-slate-800 rounded-2xl p-5 space-y-3">
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                  <h3 className="font-semibold text-sm">Bitácora de Gastos, Tickets de Súper y Variables</h3>
+                  <h3 className="font-semibold text-sm">Bitácora de Gastos</h3>
                   <div className="flex flex-wrap gap-1 bg-slate-800 p-1 rounded-lg text-xs">
                     {[
                       { id: 'todos', label: 'Todos' },
@@ -1315,18 +1379,12 @@ export default function App() {
                   {metrics.filteredMovements.map((m) => (
                     <div
                       key={m.id}
-                      className={`p-3.5 rounded-xl border flex justify-between items-start gap-3 ${
-                        m.type === 'andrea_4000'
-                          ? 'bg-pink-950/20 border-pink-500/30'
-                          : m.type === 'super_sobrante'
-                          ? 'bg-emerald-950/20 border-emerald-500/30'
-                          : 'bg-slate-800/50 border-slate-700/60'
-                      }`}
+                      className="p-3.5 rounded-xl border bg-slate-800/50 border-slate-700/60 flex justify-between items-start gap-3"
                     >
                       <div className="space-y-1">
                         <div className="flex flex-wrap items-center gap-2">
                           <p className="text-sm font-semibold">{m.description}</p>
-                          <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 font-medium">
+                          <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-300">
                             {m.type === 'super_sobrante'
                               ? '🛒 Súper'
                               : m.type === 'pasajes_oficina'
@@ -1340,37 +1398,31 @@ export default function App() {
                               : '🍕 Fuga'}
                           </span>
                         </div>
-
                         {m.itemsDetail && (
-                          <p className="text-xs text-slate-300 bg-slate-900/70 px-2.5 py-1.5 rounded-lg border border-slate-800">
+                          <p className="text-xs text-slate-300 bg-slate-900/70 px-2.5 py-1.5 rounded-lg">
                             <strong>Qué fue:</strong> {m.itemsDetail}
                           </p>
                         )}
-
-                        <div className="flex items-center gap-3 pt-0.5">
+                        <div className="flex items-center gap-3">
                           <span className="text-xs text-slate-400">
-                            {m.date} • Pagado con: {m.method}
+                            {m.date} • {m.method}
                           </span>
                           {m.receiptPhoto && (
                             <button
                               type="button"
                               onClick={() => setPreviewTicketUrl(m.receiptPhoto || null)}
-                              className="text-xs text-sky-400 hover:text-sky-300 font-semibold flex items-center gap-1"
+                              className="text-xs text-sky-400 font-semibold flex items-center gap-1"
                             >
-                              <Eye className="w-3.5 h-3.5" /> Ver Foto del Ticket
+                              <Eye className="w-3.5 h-3.5" /> Ver Ticket
                             </button>
                           )}
                         </div>
                       </div>
-
                       <div className="flex items-center gap-3">
-                        <span className="font-bold text-sm text-amber-400 whitespace-nowrap">
-                          {formatMXN(m.amount)}
-                        </span>
+                        <span className="font-bold text-sm text-amber-400">{formatMXN(m.amount)}</span>
                         <button
                           onClick={() => handleDeleteMovement(m)}
                           className="text-slate-500 hover:text-rose-400"
-                          title="Eliminar y devolver saldo"
                         >
                           <Trash2 className="w-4 h-4" />
                         </button>
@@ -1384,30 +1436,10 @@ export default function App() {
         )}
 
         {/* ==========================================
-            PESTAÑA 4: DEUDAS Y ALERTAS BANAMEX
+            PESTAÑA 4: DEUDAS Y ALERTAS CON SIMULADOR AVALANCHA / BOLA DE NIEVE
         ========================================== */}
         {activeTab === 'deudas_alertas' && (
           <div className="space-y-6">
-            <div className="bg-rose-950/30 border border-rose-500/50 rounded-2xl p-5 space-y-3">
-              <div className="flex items-center justify-between">
-                <h2 className="font-bold text-base text-rose-300 flex items-center gap-2">
-                  <BellRing className="w-5 h-5 text-rose-400" />
-                  Protocolo Permanente: Cancelación de Domiciliaciones en Banamex
-                </h2>
-                {!state.domiciliacionReminderActive && (
-                  <button
-                    onClick={() => setState((prev) => ({ ...prev, domiciliacionReminderActive: true }))}
-                    className="text-xs underline text-rose-300"
-                  >
-                    Reactivar banner superior
-                  </button>
-                )}
-              </div>
-              <p className="text-xs text-slate-300">
-                Recuerda cancelar siempre en tu app Banamex las domiciliaciones de <code>Belvo (BTE1912023D6)</code> y <code>TU PRESTAMO (BME2211039AA)</code> cuando Banamex te notifique.
-              </p>
-            </div>
-
             <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 space-y-4">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <h3 className="font-semibold text-base">Simulador de Liquidación: Avalancha vs. Bola de Nieve vs. Quita</h3>
@@ -1433,7 +1465,7 @@ export default function App() {
 
               <div>
                 <label className="text-xs text-slate-400 flex justify-between mb-1">
-                  <span>Presupuesto mensual extra para liquidar deudas:</span>
+                  <span>Abono mensual extra simulado para deudas:</span>
                   <strong className="text-emerald-400">{formatMXN(extraDebtBudget)}/mes</strong>
                 </label>
                 <input
@@ -1450,26 +1482,18 @@ export default function App() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {orderedDebts.map((d, idx) => {
                   const quitaPay = d.balance * (1 - d.quitaDiscount / 100);
-                  const quitaSave = d.balance - quitaPay;
+                  const monthsEst = Math.ceil(d.balance / (d.minPayment + (idx === 0 ? extraDebtBudget : 0)));
                   return (
-                    <div key={d.id} className="p-4 rounded-2xl bg-slate-800/50 border border-slate-700 space-y-3">
-                      <div className="flex justify-between items-start">
-                        <span className="text-xs px-2.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 font-bold">
-                          Prioridad #{idx + 1} • CAT {d.apr}%
-                        </span>
-                        <span className="text-xs text-rose-300">{d.status}</span>
-                      </div>
+                    <div key={d.id} className="p-5 rounded-2xl bg-slate-800/50 border border-slate-700 space-y-3">
+                      <span className="text-xs px-2.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 font-bold">
+                        Prioridad #{idx + 1} • CAT {d.apr}% • ~{monthsEst} meses
+                      </span>
                       <h4 className="font-bold text-base">{d.name}</h4>
                       <p className="text-2xl font-bold">{formatMXN(d.balance)}</p>
-                      <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-xs space-y-1">
-                        <p className="flex justify-between">
-                          <span>Liquidación con Quita ({d.quitaDiscount}% desc.):</span>
-                          <strong className="text-amber-300">{formatMXN(quitaPay)}</strong>
-                        </p>
-                        <p className="flex justify-between">
-                          <span>Ahorro sobre saldo:</span>
-                          <strong className="text-emerald-400">{formatMXN(quitaSave)}</strong>
-                        </p>
+                      <p className="text-xs text-slate-300">{d.alertNote}</p>
+                      <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-xs flex justify-between">
+                        <span>Liquidación con Quita ({d.quitaDiscount}% desc.):</span>
+                        <strong className="text-amber-300">{formatMXN(quitaPay)}</strong>
                       </div>
                     </div>
                   );
@@ -1480,15 +1504,18 @@ export default function App() {
         )}
 
         {/* ==========================================
-            PESTAÑA 5: AUTO-SYNC LAPTOP + CORTE MENSUAL POR PDF
+            PESTAÑA 5: SYNC LAPTOP Y RESCATE DE DATOS
         ========================================== */}
         {activeTab === 'servidor_pdf' && (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 space-y-4">
               <h3 className="font-semibold flex items-center gap-2 text-emerald-400">
                 <Server className="w-5 h-5" />
-                Auto-Guardado en tu Laptop Servidor
+                Sincronización con tu Laptop Servidor
               </h3>
+              <p className="text-xs text-slate-300">
+                Si ya habías sincronizado antes tus gastos con tu laptop, presiona <strong>"Descargar desde Laptop"</strong> para traer el respaldo guardado en `finanzas_db.json`:
+              </p>
               <input
                 type="text"
                 value={serverUrl}
@@ -1501,44 +1528,41 @@ export default function App() {
                   onClick={() => syncWithLaptop('push')}
                   className="flex-1 bg-emerald-600 hover:bg-emerald-500 py-2.5 rounded-xl text-xs font-bold"
                 >
-                  Guardar Ahora en Laptop
+                  Guardar en Laptop
                 </button>
                 <button
                   onClick={() => syncWithLaptop('pull')}
-                  className="flex-1 bg-slate-800 hover:bg-slate-700 border border-slate-700 py-2.5 rounded-xl text-xs font-bold"
+                  className="flex-1 bg-sky-600 hover:bg-sky-500 py-2.5 rounded-xl text-xs font-bold"
                 >
                   Descargar desde Laptop
                 </button>
               </div>
-              <p className="text-xs text-slate-400">
-                Última sincronización: <strong className="text-emerald-400">{lastSyncTime}</strong>
-              </p>
             </div>
 
             <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 space-y-4">
               <h3 className="font-semibold flex items-center gap-2 text-purple-400">
                 <FileSpreadsheet className="w-5 h-5" />
-                Actualización Mensual por PDF (Con Gemini)
+                Corte Mensual por PDF (Con Gemini)
               </h3>
               <textarea
                 rows={4}
                 value={monthlyJsonInput}
                 onChange={(e) => setMonthlyJsonInput(e.target.value)}
-                placeholder="Pega aquí el bloque JSON mensual cuando me compartas tus PDFs de Banamex o Nu..."
+                placeholder="Pega aquí el bloque JSON cuando subas tus nuevos PDFs..."
                 className="w-full bg-slate-800 border border-slate-700 rounded-xl p-3 text-xs font-mono"
               />
               <button
                 onClick={handleApplyMonthlyJsonFromChat}
                 className="w-full bg-purple-600 hover:bg-purple-500 py-2.5 rounded-xl text-xs font-bold"
               >
-                Aplicar Corte Mensual Auditado
+                Aplicar Corte Mensual
               </button>
             </div>
           </div>
         )}
       </main>
 
-      {/* BARRA INFERIOR MÓVIL FULL RESPONSIVE */}
+      {/* BARRA INFERIOR MÓVIL */}
       <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-slate-900/95 backdrop-blur border-t border-slate-800 flex justify-around py-2 z-40">
         {[
           { id: 'quincena', label: 'Quincena', icon: CheckSquare },
